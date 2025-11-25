@@ -13,7 +13,7 @@ void ScreenEthMenu::update() {}
 void ScreenEthMenu::render() {
     lcd.clear();
     
-    // Заголовок (from PROGMEM)
+    // Заголовок (из PROGMEM)
     char tmpTitle[24];
     readProgmemString(ethMenuTitle, tmpTitle, sizeof(tmpTitle));
     int titleLen = utf8_strlen(tmpTitle);
@@ -74,7 +74,7 @@ void ScreenEthMenu::render() {
 void ScreenEthMenu::save() {}
 void ScreenEthMenu::load() {}
 
-// legacy wrapper removed; use screenEthMenu.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenEthMenu.render() напрямую
 
 void ScreenEthMenu::handleKey(char key) {
     if (!(gState.flags & FLAG_ETH_EDIT)) {
@@ -133,6 +133,6 @@ void ScreenEthMenu::handleKey(char key) {
             }
         }
     }
-    // Re-render current screen
+    // Повторная перерисовка текущего экрана
     this->render();
 }

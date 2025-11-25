@@ -40,7 +40,7 @@ void ScreenAnalogInputsMenu::render() {
 void ScreenAnalogInputsMenu::save() {}
 void ScreenAnalogInputsMenu::load() {}
 
-// legacy wrapper removed; use screenAnalogInputsMenu.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenAnalogInputsMenu.render() напрямую
 
 void ScreenAnalogInputsMenu::handleKey(char key) {
     switch (key) {

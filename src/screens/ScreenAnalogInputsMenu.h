@@ -16,4 +16,4 @@ public:
 };
 
 extern ScreenAnalogInputsMenu screenAnalogInputsMenu;
-// legacy wrapper removed; use screenAnalogInputsMenu.render()
+// Удалён устаревший обёртывающий show-функция; используйте screenAnalogInputsMenu.render()

@@ -39,7 +39,7 @@ void ScreenEnterPassword::handleKey(char key) {
                 if (strcmp(input, correct) == 0) {
                     requestState(SETTINGS_MENU);
                 } else {
-                    // wrong — go back to main
+                    // неверный — вернуться в главное меню
                     requestState(MAIN_MENU);
                 }
             }
@@ -49,4 +49,4 @@ void ScreenEnterPassword::handleKey(char key) {
     }
 }
 
-// legacy wrapper removed; use screenEnterPassword.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenEnterPassword.render() напрямую

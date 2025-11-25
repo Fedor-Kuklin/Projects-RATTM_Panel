@@ -16,9 +16,9 @@ public:
 };
 
 extern ScreenDateTimeMenu screenDateTimeMenu;
-// legacy wrapper removed; use screenDateTimeMenu.render()
+// Удалён устаревший обёртывающий show-функция; используйте screenDateTimeMenu.render()
 
 #include <avr/pgmspace.h>
 extern const char *const weekDaysRus[7] PROGMEM;
-// PROGMEM title declared in main.cpp
+// Заголовок в PROGMEM объявлён в main.cpp
 extern const char dateTimeTitle[] PROGMEM;

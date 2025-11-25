@@ -14,10 +14,10 @@ public:
 	void save() override;
 	void load() override;
 
-	// legacy handlers
+	// Устаревшие обработчики
 	void handleKey(char key);
 };
 
 extern ScreenParameters screenParameters;
-// legacy wrappers removed; use screenParameters.render() and
-// screenParameters.handleKey(key) directly
+// Устаревшие обёртки удалены; используйте screenParameters.render() и
+// screenParameters.handleKey(key) напрямую

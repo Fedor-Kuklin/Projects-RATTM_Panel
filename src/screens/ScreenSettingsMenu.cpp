@@ -38,7 +38,8 @@ void ScreenSettingsMenu::render() {
 void ScreenSettingsMenu::save() {}
 void ScreenSettingsMenu::load() {}
 
-// legacy wrapper removed; use screenSettingsMenu.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenSettingsMenu.render() напрямую
+// Удалён устаревший обёртывающий show-функция; используйте screenSettingsMenu.render() напрямую
 
 void ScreenSettingsMenu::handleKey(char key) {
         switch (key) {
@@ -57,7 +58,7 @@ void ScreenSettingsMenu::handleKey(char key) {
                     gState.uartMenuState = {0, 0};
                     gState.flags &= ~FLAG_UART_EDIT;
                     requestState(UART_MENU);
-                    // main loop will handle entering/rendering the UART menu
+                    // основной цикл обработает вход/отрисовку меню UART
                     return;
                 case 1: // ETH
                     loadEthFromRegisters();
@@ -66,7 +67,7 @@ void ScreenSettingsMenu::handleKey(char key) {
                     gState.flags &= ~FLAG_ETH_EDIT;
                     gState.ethEditOctet = 0;
                     requestState(ETH_MENU);
-                    // main loop will handle entering/rendering the ETH menu
+            // основной цикл обработает вход/отрисовку меню ETH
                     return;
             }
             break;
@@ -76,6 +77,6 @@ void ScreenSettingsMenu::handleKey(char key) {
         }
 
     updateMenuScroll(gState.settingsMenuState, &settingsMenu);
-    // re-render current screen
+    // повторная перерисовка текущего экрана
     this->render();
 }

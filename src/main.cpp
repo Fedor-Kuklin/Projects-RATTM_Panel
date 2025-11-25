@@ -146,8 +146,12 @@ void loop() {
       default: return nullptr;
     }
   };
+  // Получить объект экрана по значению состояния (AppState -> Screen*)
+  // Используется для централизованного управления переходами и вызова методов экранов.
 
-  // Если экран запросил смену состояния — выполним переход централизованно
+  // Если экран запросил смену состояния — выполним переход централизованно.
+  // Шаги: вызвать exit() для старого экрана, обновить gState.currentState,
+  // сбросить deferRender, получить объект нового экрана и выполнить enter()/load()/render().
   if (gState.nextState >= 0) {
     AppState requested = (AppState)gState.nextState;
     if (currentScreenPtr) currentScreenPtr->exit();
@@ -167,6 +171,8 @@ void loop() {
 
   AppState currentState = (AppState)gState.currentState;
 
+  // Если текущее состояние отличается от предыдущего (например, внешний сброс состояния),
+  // инициируем вход в новый экран: exit для старого, enter/load/render для нового.
   if (currentState != prevState) {
     if (currentScreenPtr) currentScreenPtr->exit();
     currentScreenPtr = getScreenForState(currentState);
@@ -179,6 +185,10 @@ void loop() {
     return;
   }
 
+  // Обычный рабочий цикл для активного экрана:
+  // - обработка нажатий через handleKey
+  // - периодическое обновление через update
+  // - перерисовка, если флаг needRedraw выставлен
   if (currentScreenPtr) {
     if (key) currentScreenPtr->handleKey(key);
     currentScreenPtr->update();

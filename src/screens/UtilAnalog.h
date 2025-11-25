@@ -4,6 +4,6 @@
 
 extern uint16_t analogInputsRaw[5];
 
-// Returns scaled value (physical * 100)
+// Возвращает значение, масштабированное на 100 (physical * 100)
 int16_t convertAnalogToPhysical(uint16_t raw, uint8_t index);
 void updateAnalogValues();

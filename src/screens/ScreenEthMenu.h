@@ -5,7 +5,7 @@
 #include "../GlobalState.h"
 #include <avr/pgmspace.h>
 
-// PROGMEM title declared in main.cpp
+// Заголовок в PROGMEM объявлён в main.cpp
 extern const char ethMenuTitle[] PROGMEM;
 
 class ScreenEthMenu : public Screen {
@@ -20,4 +20,4 @@ public:
 };
 
 extern ScreenEthMenu screenEthMenu;
-// legacy wrapper removed; use screenEthMenu.render()
+// Удалён устаревший обёртывающий show-функция; используйте screenEthMenu.render()

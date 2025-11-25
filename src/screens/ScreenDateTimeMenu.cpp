@@ -23,7 +23,7 @@ void ScreenDateTimeMenu::update() {}
 void ScreenDateTimeMenu::render() {
     lcd.clear();
     
-    // Заголовок (from PROGMEM)
+    // Заголовок (из PROGMEM)
     char tmpTitle[24];
     readProgmemString(dateTimeTitle, tmpTitle, sizeof(tmpTitle));
     int titleLen = utf8_strlen(tmpTitle);
@@ -54,7 +54,7 @@ void ScreenDateTimeMenu::render() {
 void ScreenDateTimeMenu::save() {}
 void ScreenDateTimeMenu::load() {}
 
-// legacy wrapper removed; use screenDateTimeMenu.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenDateTimeMenu.render() напрямую
 void ScreenDateTimeMenu::handleKey(char key) {
     switch (key) {
         case 'E':

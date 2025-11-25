@@ -24,5 +24,5 @@ public:
 };
 
 extern ScreenAnalogSettings screenAnalogSettings;
-// legacy wrappers removed; use screenAnalogSettings.render(index) and
-// screenAnalogSettings.handleKey(key, index) directly
+// Устаревшие обёртки удалены; используйте screenAnalogSettings.render(index)
+// и screenAnalogSettings.handleKey(key, index) напрямую

@@ -15,8 +15,8 @@ ScreenAnalogSettings screenAnalogSettings;
 
 void ScreenAnalogSettings::update() {}
 
+// Рендер по умолчанию (без индекса). Обычно используется render(index).
 void ScreenAnalogSettings::render() {
-    // default render — без индекса. В основном используется render(index)
 }
 
 void ScreenAnalogSettings::render(uint8_t analogIndex) {
@@ -36,11 +36,11 @@ void ScreenAnalogSettings::render(uint8_t analogIndex) {
             lcd.printRus(tmp);
         }
     
-    // Предел датчика (min/max scaled by 100)
+    // Предел датчика (min/max, масштабировано на 100)
     lcd.setCursor(0, 2);
     lcd.print(gState.analogSettingsSelected == 1 ? ">" : " ");
     char buf[32];
-    // config->minValueScaled/maxValueScaled already scaled by 100
+    // config->minValueScaled/maxValueScaled уже масштабированы на 100
     int minWhole = config->minValueScaled / 100;
     int minFrac = abs(config->minValueScaled % 100);
     int maxWhole = config->maxValueScaled / 100;
@@ -48,13 +48,14 @@ void ScreenAnalogSettings::render(uint8_t analogIndex) {
     snprintf(buf, sizeof(buf), "Предел: %d.%02d-%d.%02d", minWhole, minFrac, maxWhole, maxFrac);
     lcd.printRus(buf);
 
-    // Ток (integer math, scaled by 100)
+    // Ток (целочисленные вычисления, масштабировано на 100)
     lcd.setCursor(0, 3);
     int32_t raw = gState.analogInputs[analogIndex];
     int32_t range = (int32_t)ADC_20MA - (int32_t)ADC_4MA;
-    int32_t currentScaled100 = 400; // 4.00 mA -> 400
+    int32_t currentScaled100 = 400; // 4.00 мА -> 400
     if (range > 0) {
-        currentScaled100 = ((raw - (int32_t)ADC_4MA) * 1600 + range/2) / range + 400; // (raw-ADC_4MA)/range * 1600 + 400
+    // (raw - ADC_4MA) / range * 1600 + 400  (в целых, масштабировано на 100)
+        currentScaled100 = ((raw - (int32_t)ADC_4MA) * 1600 + range/2) / range + 400;
     }
     int curWhole = currentScaled100 / 100;
     int curFrac = abs(currentScaled100 % 100);
@@ -83,7 +84,7 @@ void ScreenAnalogSettings::handleKey(char key, uint8_t analogIndex) {
                     gState.flags |= FLAG_ANALOG_EDIT;
                 break;
             case 'W':
-                // Выход - обработка в main.cpp
+                // Выход — обработка происходит в main.cpp
                 break;
         }
     } else {
@@ -92,7 +93,7 @@ void ScreenAnalogSettings::handleKey(char key, uint8_t analogIndex) {
                 if (gState.analogSettingsSelected == 0) {
                     config->type = (config->type + 1) % 2;
                 } else if (gState.analogSettingsSelected == 1) {
-                    // min/max scaled by 100
+                    // min/max масштабированы на 100
                     if (gState.analogSettingsEditField == 0) {
                         config->minValueScaled += 10; // +0.1
                     } else {
@@ -133,7 +134,7 @@ void ScreenAnalogSettings::handleKey(char key, uint8_t analogIndex) {
 }
 
 void ScreenAnalogSettings::enter() {
-    // Render current analog index when entering the screen
+    // При входе в экран отрисовать текущий индекс аналогового входа
     render(gState.analogSettingsIndex);
 }
 
@@ -142,5 +143,5 @@ void ScreenAnalogSettings::exit() {}
 void ScreenAnalogSettings::save() {}
 void ScreenAnalogSettings::load() {}
 
-// legacy wrappers removed; use screenAnalogSettings.render(index) and
-// screenAnalogSettings.handleKey(key, index) directly
+// Устаревшие обёртки удалены; используйте screenAnalogSettings.render(index)
+// и screenAnalogSettings.handleKey(key, index) напрямую

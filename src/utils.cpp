@@ -150,7 +150,7 @@ void requestState(AppState st) {
     return;
   }
   gState.nextState = (int8_t)st;
-  gState.deferRender = 1; // prevent immediate render in current handler
+  gState.deferRender = 1; // предотвращаем немедленную перерисовку в текущем обработчике
 #if STATE_LOGGING
   if (Serial) {
     Serial.print("requestState: requested -> ");

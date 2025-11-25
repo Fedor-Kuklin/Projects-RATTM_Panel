@@ -121,5 +121,5 @@ void ScreenParameters::handleKey(char key) {
 void ScreenParameters::save() {}
 void ScreenParameters::load() {}
 
-// legacy wrappers removed; use screenParameters.render() and
-// screenParameters.handleKey(key) directly
+// Устаревшие обёртки удалены; используйте screenParameters.render() и
+// screenParameters.handleKey(key) напрямую

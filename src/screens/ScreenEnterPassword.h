@@ -18,4 +18,4 @@ private:
 };
 
 extern ScreenEnterPassword screenEnterPassword;
-// legacy wrapper removed; use screenEnterPassword.render()
+// Удалён устаревший обёртывающий show-функция; используйте screenEnterPassword.render()

@@ -5,7 +5,7 @@
 #include "../GlobalState.h"
 #include <avr/pgmspace.h>
 
-// PROGMEM menu strings declared in main.cpp
+// Строки меню в PROGMEM объявлены в main.cpp
 extern const char *const settingsItems[] PROGMEM;
 extern const char settingsTitle[] PROGMEM;
 
@@ -21,4 +21,4 @@ public:
 };
 
 extern ScreenSettingsMenu screenSettingsMenu;
-// legacy wrapper removed; use screenSettingsMenu.render() via ScreenManager
+// Удалён устаревший обёртывающий show-функция; используйте screenSettingsMenu.render() через менеджер экранов
