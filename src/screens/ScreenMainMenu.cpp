@@ -21,7 +21,7 @@ void ScreenMainMenu::update() {
 void ScreenMainMenu::render() {
     lcd.clear();
     
-    // Заголовок (title in PROGMEM)
+    // Заголовок (строка в PROGMEM)
     char tmpTitle[24];
     readProgmemString(mainMenuTitle, tmpTitle, sizeof(tmpTitle));
     int titleLen = utf8_strlen(tmpTitle);
@@ -52,7 +52,7 @@ void ScreenMainMenu::load() {
 }
 
 // Совместимая функция для существующего кода
-// legacy wrapper removed; use screenMainMenu.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenMainMenu.render() напрямую
 
 void ScreenMainMenu::handleKey(char key) {
         // Переиспользуем логику из старой handleMainMenu

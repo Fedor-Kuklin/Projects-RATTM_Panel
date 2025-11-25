@@ -4,7 +4,7 @@
 extern FutabaCyrillicLCD lcd;
 extern Menu uartMenu;
 
-// UART value lists
+// Списки значений для настроек UART
 const uint32_t baudRates[] = {1200, 2400, 4800, 9600, 19200, 38400, 57600};
 const uint8_t baudRatesCount = 7;
 const uint8_t dataBitsList[] = {8, 7};
@@ -13,7 +13,7 @@ const uint8_t dataBitsCount = 2;
 const uint8_t stopBitsList[] = {1, 2};
 const uint8_t stopBitsCount = 2;
 
-// Parity list stored in PROGMEM
+// Список паритетов хранится в PROGMEM
 static const char parity_0[] PROGMEM = "N";
 static const char parity_1[] PROGMEM = "O";
 static const char parity_2[] PROGMEM = "E";
@@ -46,7 +46,7 @@ void ScreenUARTMenu::render() {
     // стрелка выбора
     lcd.writeChar((itemIdx == gState.uartMenuState.selectedIndex) ? 0x10 : ' ');
 
-    // название пункта из PROGMEM
+    // название пункта берётся из PROGMEM
     char tmp[24];
     readProgmemTableString(uartMenuItems, itemIdx, tmp, sizeof(tmp));
     lcd.printRus(tmp);
@@ -54,7 +54,7 @@ void ScreenUARTMenu::render() {
         // значение пункта (правая часть строки)
         char buf[16];
         switch (itemIdx) {
-            case 0: // baud
+            case 0: // скорость (baud)
                 if ((gState.flags & FLAG_UART_EDIT) && gState.uartMenuState.selectedIndex == 0) {
                     snprintf(buf, sizeof(buf), "%lu <", gState.uart_baud);
                 } else {
@@ -63,7 +63,7 @@ void ScreenUARTMenu::render() {
                 lcd.setCursor(12, i + 1);
                 lcd.print(buf);
                 break;
-            case 1: // data bits
+            case 1: // бит данных (data bits)
                 if ((gState.flags & FLAG_UART_EDIT) && gState.uartMenuState.selectedIndex == 1) {
                     snprintf(buf, sizeof(buf), "%u <", dataBitsList[gState.uartEditIndex]);
                 } else {
@@ -72,7 +72,7 @@ void ScreenUARTMenu::render() {
                 lcd.setCursor(12, i + 1);
                 lcd.print(buf);
                 break;
-            case 2: // parity
+            case 2: // паритет (parity)
                 if ((gState.flags & FLAG_UART_EDIT) && gState.uartMenuState.selectedIndex == 2) {
                     char ptmp[8];
                     readProgmemTableString(parityList, gState.uartEditIndex, ptmp, sizeof(ptmp));
@@ -86,7 +86,7 @@ void ScreenUARTMenu::render() {
                     lcd.printRus(ptmp);
                 }
                 break;
-            case 3: // stop bits
+            case 3: // стоп-биты (stop bits)
                 if ((gState.flags & FLAG_UART_EDIT) && gState.uartMenuState.selectedIndex == 3) {
                     snprintf(buf, sizeof(buf), "%u <", stopBitsList[gState.uartEditIndex]);
                 } else {
@@ -95,8 +95,8 @@ void ScreenUARTMenu::render() {
                 lcd.setCursor(12, i + 1);
                 lcd.print(buf);
                 break;
-            case 4: // apply
-                // nothing to the right
+            case 4: // применить (apply)
+                // справа ничего нет
                 break;
         }
     }
@@ -105,7 +105,7 @@ void ScreenUARTMenu::render() {
 void ScreenUARTMenu::save() {}
 void ScreenUARTMenu::load() {}
 
-// legacy wrapper removed; use screenUARTMenu.render() directly
+// Удалён устаревший обёртывающий show-функция; используйте screenUARTMenu.render() напрямую
 
 void ScreenUARTMenu::handleKey(char key) {
     if (!(gState.flags & FLAG_UART_EDIT)) {

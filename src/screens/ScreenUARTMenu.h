@@ -4,7 +4,7 @@
 #include "../MenuStructs.h"
 #include "../GlobalState.h"
 
-// UART value lists
+// Списки значений для настроек UART
 extern const uint32_t baudRates[];
 extern const uint8_t baudRatesCount;
 extern const uint8_t dataBitsList[];
@@ -14,7 +14,7 @@ extern const char *const parityList[] PROGMEM;
 extern const uint8_t parityCount;
 extern const uint8_t stopBitsList[];
 extern const uint8_t stopBitsCount;
-// PROGMEM menu strings declared in main.cpp
+// Строки меню в PROGMEM объявлены в main.cpp
 extern const char *const uartMenuItems[] PROGMEM;
 extern const char uartMenuTitle[] PROGMEM;
 
@@ -30,4 +30,4 @@ public:
 };
 
 extern ScreenUARTMenu screenUARTMenu;
-// legacy wrapper removed; use screenUARTMenu.render()
+// Удалён устаревший обёртывающий show-функция; используйте screenUARTMenu.render()

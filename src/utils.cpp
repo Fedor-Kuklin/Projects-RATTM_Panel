@@ -8,9 +8,9 @@
 #include <avr/pgmspace.h>
 #include <string.h>
 
-// Global scratch buffer used by screens for temporary formatting to avoid
-// allocating large local buffers on the stack. Size chosen to cover LCD
-// line (20 chars) + small formatting overhead.
+// Глобальный временный буфер, используемый экранами для форматирования,
+// чтобы не выделять большие локальные буферы в стеке. Размер рассчитан на
+// строку ЖКИ (20 символов) и небольшую служебную часть.
 char g_scratch[32];
 
 extern ModbusRTUServerClass RTU;
@@ -90,14 +90,14 @@ void loadDateTimeFromRegisters() {
 
 // Обновление прокрутки меню — поддержка общего поведения для экранов
 void updateMenuScroll(struct MenuState &state, const struct Menu *menu) {
-  const int visibleRows = 3; // LCD rows used for items (header excluded)
+  const int visibleRows = 3; // число видимых строк ЖКИ для пунктов (заголовок исключён)
   if (!menu) return;
   if (menu->length <= visibleRows) {
     state.scroll = 0;
     if (state.selectedIndex >= menu->length) state.selectedIndex = menu->length - 1;
     return;
   }
-  // clamp selected
+  // ограничить selected
   if (state.selectedIndex < 0) state.selectedIndex = 0;
   if (state.selectedIndex >= menu->length) state.selectedIndex = menu->length - 1;
 
@@ -108,40 +108,41 @@ void updateMenuScroll(struct MenuState &state, const struct Menu *menu) {
   if (state.scroll > maxScroll) state.scroll = maxScroll;
 }
 
-// --- PROGMEM helpers ---
+// --- Вспомогательные функции для PROGMEM ---
 void readProgmemString(PGM_P src, char *dst, size_t dstSize) {
   if (!dst || dstSize == 0) return;
   if (!src) { dst[0] = '\0'; return; }
-  // Use strncpy_P which copies from program space
+  // Используем strncpy_P для копирования из области программной памяти (PROGMEM)
   strncpy_P(dst, (PGM_P)src, dstSize - 1);
   dst[dstSize - 1] = '\0';
 }
 
 void readProgmemTableString(const char *const table[] PROGMEM, uint8_t idx, char *dst, size_t dstSize) {
   if (!dst || dstSize == 0) return;
-  // read pointer to string from PROGMEM table
+  // читаем указатель на строку из таблицы в PROGMEM
   PGM_P p = (PGM_P)pgm_read_word(&(table[idx]));
   if (!p) { dst[0] = '\0'; return; }
   strncpy_P(dst, p, dstSize - 1);
   dst[dstSize - 1] = '\0';
 }
 
-// Request a state change from screens. This sets gState.nextState; the main
-// loop will perform exit()/enter()/load()/render() when it sees the request.
-// Behavior:
-// - If requested state equals current state, the request is ignored.
-// - If the same request is already pending, it is ignored.
-// - Sets gState.deferRender to prevent synchronous render() calls in the
-//   same handler from drawing the old screen after a transition request.
+// Запрос смены состояния от экранов. Устанавливает gState.nextState; main
+// цикл выполнит exit()/enter()/load()/render() при обнаружении запроса.
+// Поведение:
+// - Если запрошенное состояние совпадает с текущим — запрос игнорируется.
+// - Если такой же запрос уже ожидает выполнения — он игнорируется.
+// - Устанавливается gState.deferRender, чтобы предотвратить синхронные
+//   вызовы render() в текущем обработчике, которые могли бы отрисовать старый
+//   экран после запроса перехода.
 void requestState(AppState st) {
-  // Ignore request to switch to the same state
+  // Игнорировать запрос перехода в то же самое состояние
   if ((uint8_t)st == gState.currentState) {
 #if STATE_LOGGING
     if (Serial) Serial.println("requestState: ignored same state");
 #endif
     return;
   }
-  // Ignore duplicate pending request
+  // Игнорировать дублирующий ожидающийся запрос
   if (gState.nextState >= 0 && (int8_t)st == gState.nextState) {
 #if STATE_LOGGING
     if (Serial) Serial.println("requestState: duplicate request ignored");

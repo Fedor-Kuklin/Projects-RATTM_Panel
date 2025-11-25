@@ -22,7 +22,7 @@ struct GlobalState {
     uint8_t uart_stopBits = 1;
     
     // Аналоговые входы
-    // min/max scaled by 100
+        // min/max масштабированы на 100
     AnalogInputConfig analogConfigs[5] = {
         {0, 0 * 100, 100 * 100, true},
         {0, 0 * 100, 100 * 100, true},
@@ -32,7 +32,8 @@ struct GlobalState {
     };
     
     uint16_t analogInputs[5] = {0, 0, 0, 0, 0};
-    // Store analog values as fixed-point (scaled by 100) to save RAM vs float
+        // Храним аналоговые значения в фиксированной точке (умноженные на 100)
+        // чтобы экономить RAM по сравнению с float
     int16_t analogValuesScaled[5] = {0, 0, 0, 0, 0};
     
     // Дата и время
@@ -41,9 +42,9 @@ struct GlobalState {
     uint8_t dt_hour = 0, dt_min = 0, dt_sec = 0;
     
     // Флаги редактирования (битовые флаги для экономии памяти)
-    // FLAG_ETH_EDIT     - редактирование сетевых октетов
-    // FLAG_UART_EDIT    - редактирование UART параметров
-    // FLAG_ANALOG_EDIT  - редактирование настроек аналоговых входов
+        // FLAG_ETH_EDIT     - редактирование сетевых октетов
+        // FLAG_UART_EDIT    - редактирование параметров UART
+        // FLAG_ANALOG_EDIT  - редактирование настроек аналоговых входов
     uint8_t flags = 0;
     uint8_t ethEditOctet = 0;
     uint8_t uartEditIndex = 0;
@@ -51,7 +52,8 @@ struct GlobalState {
     
     // Навигация (храним как uint8_t для экономии 1 байта на поле)
     uint8_t currentState = MAIN_MENU;
-    // Запрос на смену состояния: экраны устанавливают nextState вместо прямой установки currentState
+        // Запрос на смену состояния: экраны устанавливают nextState вместо
+        // прямой установки currentState
     // -1 означает отсутствие запроса
     int8_t nextState = -1;
     uint8_t previousState = MAIN_MENU;

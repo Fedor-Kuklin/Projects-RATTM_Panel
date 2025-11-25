@@ -12,31 +12,32 @@ void loadAnalogInputsFromRegisters();
 void loadDateTimeFromRegisters();
 void saveEthToRegisters();
 void loadEthFromRegisters();
-// Utility used by screens/main for menu scrolling
+// Вспомогательная утилита, используемая экранами/main для прокрутки меню
 void updateMenuScroll(struct MenuState &state, const struct Menu *menu);
 
-// PROGMEM helpers
-// Copy a NUL-terminated string from PROGMEM (source PGM_P) into dst
-// dstSize includes space for terminating NUL.
+// Вспомогательные функции для работы с PROGMEM
+// Копирует NUL-терминированную строку из PROGMEM (источник PGM_P) в dst.
+// dstSize включает место для завершающего NUL.
 void readProgmemString(PGM_P src, char *dst, size_t dstSize);
 
-// Copy a string from a PROGMEM table of strings: table is declared as
-// `const char *const table[] PROGMEM` in the callers. idx selects the entry.
+// Копировать строку из таблицы строк в PROGMEM: таблица объявляется как
+// `const char *const table[] PROGMEM` у вызывающего. idx — индекс записи.
 void readProgmemTableString(const char *const table[] PROGMEM, uint8_t idx, char *dst, size_t dstSize);
 
-// Forward AppState
+// Предварительное объявление AppState
 #include "MenuStructs.h"
 
-// Request a state transition from a screen: screens should call this instead
-// of writing to gState.currentState directly. This sets gState.nextState and
-// lets the main loop perform exit()/enter() safely.
+// Запросить переход состояния из экрана: экраны должны вызывать это вместо
+// прямой записи в gState.currentState. Функция устанавливает gState.nextState
+// и позволяет main циклу безопасно выполнить exit()/enter().
 void requestState(AppState st);
 
-// Global scratch buffer for temporary formatting to reduce stack usage.
-// Size chosen to cover typical LCD lines (20 chars) plus formatting.
+// Глобальный временный буфер для временного форматирования, чтобы снизить
+// использование стека. Размер выбран для типичных строк ЖКИ (~20 знаков)
+// плюс форматирование.
 extern char g_scratch[32];
 
-// Enable lightweight state transition logging for debugging (0 = off)
+// Включить лёгкое логирование переходов состояний для отладки (0 = выкл)
 #ifndef STATE_LOGGING
 #define STATE_LOGGING 0
 #endif

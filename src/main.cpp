@@ -6,8 +6,8 @@
 #include "Futaba/FutabaCyrillicLCD.h"
 #include <GTimer.h>
 
-// Small-step migration: include screen headers and utils declarations so main can
-// delegate input/rendering to Screen subclasses when they exist.
+// Пошаговая миграция: подключаем заголовки экранов и объявления утилит,
+// чтобы main мог делегировать ввод и отрисовку подклассам Screen при их наличии.
 #include "utils.h"
 #include "GlobalState.h"
 #include "MenuStructs.h"
@@ -39,7 +39,8 @@ unsigned long lastActivity = 0;
 bool lcdIsOn = true;
 const unsigned long LCD_TIMEOUT = 10000; // 10 секунд в мс
 
-// Menu metadata used by screens (titles/items). Strings moved to PROGMEM to save RAM.
+// Метаданные меню, используемые экранами (заголовки/пункты). Строки перемещены
+// в PROGMEM для экономии оперативной памяти.
 const char m0[] PROGMEM = "Экран параметров";
 const char m1[] PROGMEM = "Настройки";
 const char m2[] PROGMEM = "Диагностика";
@@ -89,7 +90,7 @@ Menu settingsMenu = {nullptr, sizeof(settingsItems)/sizeof(settingsItems[0]), nu
 Menu dateTimeMenu = {nullptr, 1, nullptr};
 Menu analogInputsMenu = {nullptr, sizeof(analogInputsMenuItems)/sizeof(analogInputsMenuItems[0]), nullptr};
 
-// setup
+// инициализация
 void setup() {
   Serial.begin(57600);
   while (!Serial);
@@ -100,13 +101,13 @@ void setup() {
   }
   RTU.configureHoldingRegisters(0x00, 100);
   lcd.begin();
-  // Start with main screen via screen object
+  // Стартуем с главного экрана через объект screenMainMenu
   screenMainMenu.enter();
   screenMainMenu.load();
   screenMainMenu.render();
 }
 
-// loop
+// основной цикл
 void loop() {
   RTU.poll();
   static GTimer<millis> tmr3_local(LCD_TIMEOUT, true);
@@ -152,7 +153,7 @@ void loop() {
     if (currentScreenPtr) currentScreenPtr->exit();
     gState.currentState = (uint8_t)requested;
     gState.nextState = -1;
-    // Clear deferRender — we're about to render the new screen in a controlled way
+  // Сбрасываем deferRender — сейчас будем отрисовывать новый экран в контролируемом порядке
     gState.deferRender = 0;
     currentScreenPtr = getScreenForState(requested);
     if (currentScreenPtr) {
@@ -185,6 +186,6 @@ void loop() {
     prevState = currentState;
     return;
   }
-  // If no screen object provided for current state, nothing to do here.
+  // Если для текущего состояния нет объекта экрана — ничего не делать.
   prevState = currentState;
 }

@@ -8,7 +8,8 @@ struct Menu {
 
 struct AnalogInputConfig {
   int8_t type;
-  // Use fixed-point (scaled by 100) to save RAM instead of float
+  // Используем фиксированную точку (умноженную на 100), чтобы экономить RAM
+  // вместо использования float
   int16_t minValueScaled;
   int16_t maxValueScaled;
   bool show;
