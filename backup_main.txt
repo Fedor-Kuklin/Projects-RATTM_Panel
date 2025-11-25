@@ -1,0 +1,865 @@
+#include <Arduino.h>
+#include "RS485.h"
+#include <ArduinoRS485.h>
+#include <ArduinoModbus.h>
+#include "Keypad/ExternalKeyPad.h"
+#include "Futaba/FutabaCyrillicLCD.h"
+#include <GTimer.h>
+
+static GTimer<millis> tmr3;
+
+uint8_t utf8_strlen(const char* str);
+
+const uint8_t dataPins[8] = {44, 43, 42, 41, 40, 39, 38, 37};
+FutabaCyrillicLCD lcd(34, 33, 2, dataPins);
+const int TX_PIN = 21;
+const int RX_PIN = 20;
+const int DE_PIN = 25;
+const int RE_PIN = 25;
+ModbusRTUServerClass RTU;
+RS485Class rs485 = RS485Class(Serial1, TX_PIN, DE_PIN, RE_PIN);
+
+unsigned long lastActivity = 0;
+bool lcdIsOn = true;
+const unsigned long LCD_TIMEOUT = 10000; // 10 секунд в мс
+
+// --- Меню ---
+struct Menu {
+  const char** items;
+  uint8_t length;
+  const char* title;
+};
+
+const char* mainMenuItems[] = {"Экран параметров", 
+                              "Настройки", 
+                              "Диагностика", 
+                              "Аналоговые входа", 
+                              "Дата и время"
+                            };
+const char* settingsItems[] = {"Настройки UART", 
+                              "Настройки Eth", 
+                              "Настройки времени"
+                            };
+const char* uartMenuItems[] = {"Скорость", 
+                              "Бит данных", 
+                              "Паритет", 
+                              "Стоп бит", 
+                              "Применить"
+                            };
+const char* ethMenuItems[] = {"IP", 
+                              "Mask", 
+                              "Gateway", 
+                              "DNS", 
+                              "Применить"
+                            };
+
+const char* analogInputsMenuItems[] = {"Аналоговый 1", 
+                                        "Аналоговый 2", 
+                                        "Аналоговый 3", 
+                                        "Аналоговый 4", 
+                                        "Аналоговый 5"
+                                      };
+                            
+const char* dateTimeMenuItems[] = {"Дата и время"};
+Menu ethMenu = {ethMenuItems, sizeof(ethMenuItems)/sizeof(ethMenuItems[0]), "Eth настройки"};
+Menu uartMenu = {uartMenuItems, sizeof(uartMenuItems)/sizeof(uartMenuItems[0]), "UART настройки"};
+Menu mainMenu = {mainMenuItems, sizeof(mainMenuItems)/sizeof(mainMenuItems[0]), "Главное меню"};
+Menu settingsMenu = {settingsItems, sizeof(settingsItems)/sizeof(settingsItems[0]), "Настройки"};
+Menu dateTimeMenu = {dateTimeMenuItems, 1, "Дата и время"};
+
+Menu analogInputsMenu = {analogInputsMenuItems, 
+                          sizeof(analogInputsMenuItems)/sizeof(analogInputsMenuItems[0]), 
+                          "Аналоговые входа"
+                        };
+
+// --- Состояния ---
+enum AppState { MAIN_MENU, ENTER_PASSWORD, SETTINGS_MENU, UART_MENU, ETH_MENU, DATE_TIME_MENU, ANALOG_INPUTS_MENU};
+
+AppState currentState = MAIN_MENU;
+
+// --- Списки значений для выбора ---
+const uint32_t baudRates[] = {1200, 2400, 4800, 9600, 19200, 38400, 57600};
+const uint8_t baudRatesCount = sizeof(baudRates)/sizeof(baudRates[0]);
+const uint8_t dataBitsList[] = {8, 7};
+const uint8_t dataBitsCount = sizeof(dataBitsList)/sizeof(dataBitsList[0]);
+const char* parityList[] = {"N", "O", "E"};
+const uint8_t parityCount = 3;
+const uint8_t stopBitsList[] = {1, 2};
+const uint8_t stopBitsCount = 2;
+
+// --- Переменные для UART меню ---
+uint8_t uart_selectedIndex = 0;
+uint8_t uart_menuScroll = 0;
+bool uart_isEditing = false;
+uint8_t uart_editIndex = 0; // индекс выбранного значения в списке
+uint32_t uart_baud = 9600;
+uint8_t uart_dataBits = 8;
+uint8_t uart_parity = 0; // 0-N, 1-O, 2-E
+uint8_t uart_stopBits = 1;
+
+// --- Переменные для ETH меню ---
+uint8_t eth_selectedIndex = 0;
+uint8_t eth_menuScroll = 0;
+bool eth_isEditing = false;
+uint8_t eth_editOctet = 0; // 0..3 — номер октета
+uint8_t eth_ip[4], eth_mask[4], eth_gw[4], eth_dns[4];
+
+// --- Переменные для даты и времени ---
+uint8_t dt_day = 1, dt_month = 1, dt_year = 24;
+uint8_t dt_weekday = 1;
+uint8_t dt_hour = 0, dt_min = 0, dt_sec = 0;
+const char* weekDaysRus[] = {"Понедельник", 
+                            "Вторник", 
+                            "Среда", 
+                            "Четверг", 
+                            "Пятница", 
+                            "Суббота", 
+                            "Воскресенье"
+                          };
+
+// --- ETH: загрузка из регистров ---
+void loadEthFromRegisters() {
+  for (int i = 0; i < 4; i++) {
+    eth_ip[i] = RTU.holdingRegisterRead(i);
+    eth_mask[i] = RTU.holdingRegisterRead(4 + i);
+    eth_gw[i] = RTU.holdingRegisterRead(8 + i);
+    eth_dns[i] = RTU.holdingRegisterRead(12 + i);
+  }
+}
+// --- ETH: сохранение в регистры ---
+void saveEthToRegisters() {
+  for (int i = 0; i < 4; i++) {
+    RTU.holdingRegisterWrite(20 + i, eth_ip[i]);
+    RTU.holdingRegisterWrite(24 + i, eth_mask[i]);
+    RTU.holdingRegisterWrite(28 + i, eth_gw[i]);
+    RTU.holdingRegisterWrite(32 + i, eth_dns[i]);
+  }
+  RTU.holdingRegisterWrite(19, 1); // Флаг применения
+}
+
+// --- Загрузка даты и времени из регистров ---
+void loadDateTimeFromRegisters() {
+  dt_day = RTU.holdingRegisterRead(24);
+  dt_month = RTU.holdingRegisterRead(25);
+  dt_year = RTU.holdingRegisterRead(26);
+  dt_weekday = RTU.holdingRegisterRead(23); // 1-7
+  dt_hour = RTU.holdingRegisterRead(22);
+  dt_min = RTU.holdingRegisterRead(21);
+  dt_sec = RTU.holdingRegisterRead(20);
+}
+// --- Отображение меню даты и времени ---
+void showDateTimeMenu() {
+  lcd.clear();
+  int titleLen = utf8_strlen(dateTimeMenu.title);
+  int titlePad = (20 - titleLen) / 2;
+  lcd.setCursor(titlePad > 0 ? titlePad : 0, 0);
+  lcd.printRus(dateTimeMenu.title);
+  // Дата
+  lcd.setCursor(0, 1);
+  char buf[20];
+  sprintf(buf, "Дата: %02u.%02u.%02u", dt_day, dt_month, dt_year);
+  lcd.printRus(buf);
+  // День недели
+  lcd.setCursor(0, 2);
+  if (dt_weekday >= 1 && dt_weekday <= 7) {
+    lcd.printRus(weekDaysRus[dt_weekday - 1]);
+  } else {
+    lcd.printRus("День недели?");
+  }
+  // Время
+  lcd.setCursor(0, 3);
+  sprintf(buf, "Время: %02u:%02u:%02u", dt_hour, dt_min, dt_sec);
+  lcd.printRus(buf);
+}
+
+// --- Аналоговые входы ---
+uint16_t analogInputs[5] = {0, 0, 0, 0, 0};
+uint8_t analog_selectedIndex = 0;
+uint8_t analog_menuScroll = 0;
+bool analog_isEditing = false;
+uint8_t analog_editIndex = 0;
+
+
+// --- Загрузка аналоговых входов из регистров ---
+void loadAnalogInputsFromRegisters() {
+  for (int i = 0; i < 5; i++) {
+    analogInputs[i] = RTU.holdingRegisterRead(50 + i); // или другие адреса
+  }
+}
+
+// --- Глобальные переменные для меню ---
+const Menu* currentMenu = &mainMenu;
+int selectedIndex = 0;
+int menuScroll = 0;
+const uint8_t lcdRows = 3; // Строки для пунктов меню (без заголовка)
+const byte menuSelectorChar = 0x10;
+
+// --- UTF-8 длина строки ---
+uint8_t utf8_strlen(const char* str) {
+  uint8_t len = 0;
+  while (*str) {
+    if ((*str & 0xC0) != 0x80) len++;
+    str++;
+  }
+  return len;
+}
+
+// --- Отображение меню аналоговых входов ---
+void showAnalogInputsMenu() {
+  lcd.clear();
+  int titleLen = utf8_strlen(analogInputsMenu.title);
+  int titlePad = (20 - titleLen) / 2;
+  lcd.setCursor(titlePad > 0 ? titlePad : 0, 0);
+  lcd.printRus(analogInputsMenu.title);
+  char buf[20];
+  for (int i = 0; i < lcdRows; i++) {
+    int itemIdx = i + analog_menuScroll;
+    lcd.setCursor(0, i + 1);
+    if (itemIdx < analogInputsMenu.length) {
+      if (itemIdx == analog_selectedIndex) lcd.writeChar(menuSelectorChar);
+      else lcd.print(" ");
+      sprintf(buf, "Аналоговый %d: %u", itemIdx + 1, analogInputs[itemIdx]);
+      lcd.printRus(buf);
+    } else {
+      lcd.print(" ");
+    }
+  }
+}
+
+// --- ETH: отображение ---
+void showEthMenu() {
+  lcd.clear();
+  int titleLen = utf8_strlen(ethMenu.title);
+  int titlePad = (20 - titleLen) / 2;
+  lcd.setCursor(titlePad > 0 ? titlePad : 0, 0);
+  lcd.printRus(ethMenu.title);
+  for (int i = 0; i < lcdRows; i++) {
+    int itemIdx = i + eth_menuScroll;
+    lcd.setCursor(0, i + 1);
+    if (itemIdx < ethMenu.length) {
+      if (itemIdx == eth_selectedIndex) lcd.writeChar(menuSelectorChar);
+      else lcd.print(" ");
+      char buf[20];
+      if (itemIdx == 0) {
+        lcd.printRus("IP: ");
+        for (int j = 0; j < 4; j++) {
+          if (eth_isEditing && eth_selectedIndex == 0 && eth_editOctet == j) lcd.print("[");
+          sprintf(buf, "%u", eth_ip[j]);
+          lcd.print(buf);
+          if (eth_isEditing && eth_selectedIndex == 0 && eth_editOctet == j) lcd.print("]");
+          if (j < 3) lcd.print(".");
+        }
+      } else if (itemIdx == 1) {
+        lcd.printRus("Mask: ");
+        for (int j = 0; j < 4; j++) {
+          if (eth_isEditing && eth_selectedIndex == 1 && eth_editOctet == j) lcd.print("[");
+          sprintf(buf, "%u", eth_mask[j]);
+          lcd.print(buf);
+          if (eth_isEditing && eth_selectedIndex == 1 && eth_editOctet == j) lcd.print("]");
+          if (j < 3) lcd.print(".");
+        }
+      } else if (itemIdx == 2) {
+        lcd.printRus("GW: ");
+        for (int j = 0; j < 4; j++) {
+          if (eth_isEditing && eth_selectedIndex == 2 && eth_editOctet == j) lcd.print("[");
+          sprintf(buf, "%u", eth_gw[j]);
+          lcd.print(buf);
+          if (eth_isEditing && eth_selectedIndex == 2 && eth_editOctet == j) lcd.print("]");
+          if (j < 3) lcd.print(".");
+        }
+      } else if (itemIdx == 3) {
+        lcd.printRus("DNS: ");
+        for (int j = 0; j < 4; j++) {
+          if (eth_isEditing && eth_selectedIndex == 3 && eth_editOctet == j) lcd.print("[");
+          sprintf(buf, "%u", eth_dns[j]);
+          lcd.print(buf);
+          if (eth_isEditing && eth_selectedIndex == 3 && eth_editOctet == j) lcd.print("]");
+          if (j < 3) lcd.print(".");
+        }
+      } else if (itemIdx == 4) {
+        lcd.printRus("Применить");
+      }
+    } else {
+      lcd.print(" ");
+    }
+  }
+}
+
+// --- Функция отображения UART меню ---
+void showUARTMenu() {
+  lcd.clear();
+  int titleLen = utf8_strlen(uartMenu.title);
+  int titlePad = (20 - titleLen) / 2;
+  lcd.setCursor(titlePad > 0 ? titlePad : 0, 0);
+  lcd.printRus(uartMenu.title);
+  for (int i = 0; i < lcdRows; i++) {
+    int itemIdx = i + uart_menuScroll;
+    lcd.setCursor(0, i + 1);
+    if (itemIdx < uartMenu.length) {
+      if (itemIdx == uart_selectedIndex) lcd.writeChar(menuSelectorChar);
+      else lcd.print(" ");
+      // Значения
+      if (itemIdx == 0) {
+        lcd.printRus("Скорость: ");
+        char buf[12];
+        if (uart_isEditing && uart_selectedIndex == 0) {
+          sprintf(buf, "%lu", baudRates[uart_editIndex]);
+          lcd.print(buf);
+        } else {
+          sprintf(buf, "%lu", uart_baud);
+          lcd.print(buf);
+        }
+      } else if (itemIdx == 1) {
+        lcd.printRus("Бит данных: ");
+        char buf[4];
+        if (uart_isEditing && uart_selectedIndex == 1) {
+          sprintf(buf, "%u", dataBitsList[uart_editIndex]);
+          lcd.print(buf);
+        } else {
+          sprintf(buf, "%u", uart_dataBits);
+          lcd.print(buf);
+        }
+      } else if (itemIdx == 2) {
+        lcd.printRus("Паритет: ");
+        if (uart_isEditing && uart_selectedIndex == 2)
+          lcd.printRus(parityList[uart_editIndex]);
+        else
+          lcd.printRus(parityList[uart_parity]);
+      } else if (itemIdx == 3) {
+        lcd.printRus("Стоп бит: ");
+        char buf[4];
+        if (uart_isEditing && uart_selectedIndex == 3) {
+          sprintf(buf, "%u", stopBitsList[uart_editIndex]);
+          lcd.print(buf);
+        } else {
+          sprintf(buf, "%u", uart_stopBits);
+          lcd.print(buf);
+        }
+      } else if (itemIdx == 4) {
+        lcd.printRus("Применить");
+      }
+    } else {
+      lcd.print(" ");
+    }
+  }
+}
+
+// --- Инициализация UART меню значениями из HoldingRegisters ---
+void loadUARTFromRegisters() {
+  // Предполагается, что значения уже валидны
+  uint32_t reg_baud = RTU.holdingRegisterRead(40);
+  uart_baud = reg_baud ? reg_baud : 9600;
+  // Найти индекс
+  uart_editIndex = 0;
+  for (uint8_t i = 0; i < baudRatesCount; i++) if (baudRates[i] == uart_baud) uart_editIndex = i;
+  uint8_t reg_dataBits = RTU.holdingRegisterRead(41);
+  uart_dataBits = reg_dataBits ? reg_dataBits : 8;
+  uint8_t reg_parity = RTU.holdingRegisterRead(42);
+  uart_parity = reg_parity ? reg_parity : 0;
+  uint8_t reg_stopBits = RTU.holdingRegisterRead(43);
+  uart_stopBits = reg_stopBits ? reg_stopBits : 1;
+  
+}
+
+// --- Сохранение UART в HoldingRegisters ---
+void saveUARTToRegisters() {
+  RTU.holdingRegisterWrite(40, uart_baud);
+  RTU.holdingRegisterWrite(41, uart_dataBits);
+  RTU.holdingRegisterWrite(42, uart_parity);
+  RTU.holdingRegisterWrite(43, uart_stopBits);
+}
+
+// --- Универсальная функция отображения меню ---
+void showMenu(const Menu* menu, int selected, int scroll) {
+  lcd.clear();
+  int titleLen = utf8_strlen(menu->title);
+  int titlePad = (20 - titleLen) / 2;
+  lcd.setCursor(titlePad > 0 ? titlePad : 0, 0); // Строка 0 — заголовок
+  lcd.printRus(menu->title);
+  int maxScroll = (menu->length > lcdRows) ? (menu->length - lcdRows) : 0;
+  if (scroll > maxScroll) scroll = maxScroll;
+  if (scroll < 0) scroll = 0;
+  for (int i = 0; i < lcdRows; i++) {
+    int itemIdx = i + scroll;
+    lcd.setCursor(0, i + 1); // Строки 1,2,3 — пункты меню
+    if (itemIdx < menu->length) {
+      if (itemIdx == selected) lcd.writeChar(menuSelectorChar);
+      else lcd.print(" ");
+      lcd.printRus(menu->items[itemIdx]);
+    } else {
+      lcd.print(" ");
+    }
+  }
+}
+
+// --- Пароль ---
+const char correctPassword[] = "12345";
+char inputPassword[6] = "";
+uint8_t passwordLength = 0;
+void resetPasswordInput() { memset(inputPassword, 0, sizeof(inputPassword)); passwordLength = 0; }
+void showPasswordScreen() {
+  lcd.clear();
+  lcd.setCursor(2, 0);
+  lcd.printRus("Ввести пароль");
+  lcd.setCursor(6, 2);
+  for (int i = 0; i < 5; i++) {
+    if (i < passwordLength) lcd.writeChar(0x2A);
+    else lcd.writeChar(0x2D);
+  }
+  lcd.setCursor(6 + passwordLength, 2);
+  lcd.setDisplay(true, true, true);
+}
+
+void handlePasswordInput(char key) {
+  if (key >= '0' && key <= '9') {
+    if (passwordLength < 5) {
+      inputPassword[passwordLength++] = key;
+      showPasswordScreen();
+      if (passwordLength == 5 && strcmp(inputPassword, correctPassword) == 0) {
+        currentState = SETTINGS_MENU;
+        currentMenu = &settingsMenu;
+        selectedIndex = 0;
+        menuScroll = 0;
+        lcd.setDisplay(true, false, false);
+      }
+    }
+  } else if (key == 'W'){
+        currentState = MAIN_MENU;
+  }
+}
+
+void enterMenu(const Menu* menu) {
+  currentMenu = menu;
+  selectedIndex = 0;
+  menuScroll = 0;
+  showMenu(currentMenu, selectedIndex, menuScroll);
+}
+
+// --- setup ---
+void setup() {
+  Serial.begin(57600);
+  while (!Serial);
+  delay(2000);
+  if (!RTU.begin(rs485, 1, 9600)) {
+    Serial.println("Failed to start Modbus RTU Server!");
+    while (1);
+  }
+
+  RTU.configureHoldingRegisters(0x00, 100);
+  lcd.begin();
+  enterMenu(&mainMenu);
+}
+
+// --- loop ---
+void loop() {
+  RTU.poll();
+  static GTimer<millis> tmr3(LCD_TIMEOUT, true);
+  
+  if (tmr3) {
+    tmr3.stop();
+    lcdIsOn = false;
+    lcd.setDisplay(false, false, false);
+    }
+
+  static AppState prevState = (AppState)-1;
+  static int prevSelected = -1;
+  static int prevScroll = -1;
+  bool needRedraw = false;
+  char key = customKeypad.getKey();
+  if (currentState != prevState || selectedIndex != prevSelected || menuScroll != prevScroll) needRedraw = true;
+  
+  if (key) {
+      if (!lcdIsOn) {
+          tmr3.start();
+          lcdIsOn = true;
+          lcd.setDisplay(true, false, false);
+      }
+    }
+  switch (currentState) {
+    case MAIN_MENU:
+      if (prevState != MAIN_MENU) enterMenu(&mainMenu);
+      if (key) {
+              switch (key) {
+                case 'U':
+                  selectedIndex = (selectedIndex > 0) ? selectedIndex - 1 : currentMenu->length - 1;
+                  break;
+                case 'D':
+                  selectedIndex = (selectedIndex < currentMenu->length - 1) ? selectedIndex + 1 : 0;
+                  break;
+                case 'E':
+                  if (selectedIndex == 1) { // "Настройки"
+                    currentState = ENTER_PASSWORD;
+                    resetPasswordInput();
+                    showPasswordScreen();
+                    prevState = currentState;
+                    prevSelected = selectedIndex;
+                    prevScroll = menuScroll;
+                    return;
+                  } else if (selectedIndex == 3) { // Аналоговые входы
+                    loadAnalogInputsFromRegisters();
+                    currentState = ANALOG_INPUTS_MENU;
+                    showAnalogInputsMenu();
+                    prevState = currentState;
+                    return;
+                  }
+                  else if (selectedIndex == 4) { // Дата и время
+                    loadDateTimeFromRegisters();
+                    currentState = DATE_TIME_MENU;
+                    showDateTimeMenu();
+                    prevState = currentState;
+                    return;
+                  }
+                  break;            
+              }
+              if (currentMenu->length > lcdRows) {
+                if (selectedIndex < menuScroll) menuScroll = selectedIndex;
+                if (selectedIndex >= menuScroll + lcdRows) menuScroll = selectedIndex - lcdRows + 1;
+                int maxScroll = currentMenu->length - lcdRows;
+                if (menuScroll > maxScroll) menuScroll = maxScroll;
+                if (menuScroll < 0) menuScroll = 0;
+              } else {
+                menuScroll = 0;
+              }
+              needRedraw = true;
+            }
+            if (needRedraw) showMenu(currentMenu, selectedIndex, menuScroll);
+            break;
+    case ENTER_PASSWORD:
+            if (prevState != ENTER_PASSWORD) {
+              resetPasswordInput();
+              showPasswordScreen();
+            }
+            if (key) handlePasswordInput(key);
+            if (currentState == SETTINGS_MENU) {
+              enterMenu(&settingsMenu);
+              needRedraw = false;
+            } else if (currentState == MAIN_MENU){
+                  enterMenu(&mainMenu);
+                  lcd.setDisplay(true, false, false);
+                  prevState = currentState;
+                  needRedraw = true;
+                  return;
+            }
+            break;
+    case SETTINGS_MENU:
+            if (prevState != SETTINGS_MENU) enterMenu(&settingsMenu);
+            if (key) {
+              switch (key) {
+                case 'U':
+                  selectedIndex = (selectedIndex > 0) ? selectedIndex - 1 : currentMenu->length - 1;
+                  break;
+                case 'D':
+                  selectedIndex = (selectedIndex < currentMenu->length - 1) ? selectedIndex + 1 : 0;
+                  break;
+                case 'E':
+                  if (selectedIndex == 0) { // UART
+                    loadUARTFromRegisters();
+                    uart_selectedIndex = 0;
+                    uart_menuScroll = 0;
+                    uart_isEditing = false;
+                    currentState = UART_MENU;
+                    showUARTMenu();
+                    prevState = currentState;
+                    return;
+                  } else if (selectedIndex == 1) { // ETH
+                    loadEthFromRegisters();
+                    eth_selectedIndex = 0;
+                    eth_menuScroll = 0;
+                    eth_isEditing = false;
+                    eth_editOctet = 0;
+                    currentState = ETH_MENU;
+                    showEthMenu();
+                    prevState = currentState;
+                    return;
+                  } 
+                  break;
+                case 'W':
+                  currentState = MAIN_MENU;
+                  enterMenu(&mainMenu);
+                  prevState = currentState;
+                  return;
+              }
+              if (currentMenu->length > lcdRows) {
+                if (selectedIndex < menuScroll) menuScroll = selectedIndex;
+                if (selectedIndex >= menuScroll + lcdRows) menuScroll = selectedIndex - lcdRows + 1;
+                int maxScroll = currentMenu->length - lcdRows;
+                if (menuScroll > maxScroll) menuScroll = maxScroll;
+                if (menuScroll < 0) menuScroll = 0;
+              } else {
+                menuScroll = 0;
+              }
+              needRedraw = true;
+            }
+            if (needRedraw) showMenu(currentMenu, selectedIndex, menuScroll);
+            break;
+    case DATE_TIME_MENU:
+            if (prevState != DATE_TIME_MENU) showDateTimeMenu();
+            static GTimer<millis> tmr2(1000, true);
+            if (tmr2) {
+              loadDateTimeFromRegisters();
+              showDateTimeMenu();
+            };
+            if (key) {
+              if (key == 'W') {
+                tmr2.stop();
+                currentState = MAIN_MENU;
+                enterMenu(&mainMenu);
+                prevState = currentState;
+                return;
+              }
+            }
+            break;
+    case ANALOG_INPUTS_MENU:
+            if (prevState != ANALOG_INPUTS_MENU) showAnalogInputsMenu();
+            static GTimer<millis> tmrAnalog(2000, true);
+            if (tmrAnalog) {
+              Serial.println("tmrAnalog");
+              loadAnalogInputsFromRegisters();
+              showAnalogInputsMenu();
+            };
+            if (key) {
+              
+              switch (key) {
+                case 'U':
+                  if (analog_selectedIndex > 0) analog_selectedIndex--;
+                  else analog_selectedIndex = analogInputsMenu.length - 1;
+                  break;
+                case 'D':
+                  if (analog_selectedIndex < analogInputsMenu.length - 1) analog_selectedIndex++;
+                  else analog_selectedIndex = 0;
+                  break;
+                case 'W':
+                  tmrAnalog.stop();
+                  currentState = MAIN_MENU;
+                  enterMenu(&mainMenu);
+                  prevState = currentState;
+                  return;
+              }
+              // Скроллинг
+              if (analog_selectedIndex < analog_menuScroll) analog_menuScroll = analog_selectedIndex;
+              if (analog_selectedIndex >= analog_menuScroll + lcdRows) analog_menuScroll = analog_selectedIndex - lcdRows + 1;
+              int maxScroll = analogInputsMenu.length - lcdRows;
+              if (analog_menuScroll > maxScroll) analog_menuScroll = maxScroll;
+              if (analog_menuScroll < 0) analog_menuScroll = 0;       
+              showAnalogInputsMenu();
+
+            }
+            break;
+          
+    case ETH_MENU:
+      if (prevState != ETH_MENU) showEthMenu();
+      if (key) {
+        if (!eth_isEditing) {
+          switch (key) {
+            case 'U':
+              eth_selectedIndex = (eth_selectedIndex > 0) ? eth_selectedIndex - 1 : ethMenu.length - 1;
+              break;
+            case 'D':
+              eth_selectedIndex = (eth_selectedIndex < ethMenu.length - 1) ? eth_selectedIndex + 1 : 0;
+              break;
+            case 'E':
+              if (eth_selectedIndex < 4) {
+                eth_isEditing = true;
+                eth_editOctet = 0;
+              } else if (eth_selectedIndex == 4) {
+                saveEthToRegisters();
+                currentState = SETTINGS_MENU;
+                enterMenu(&settingsMenu);
+                prevState = currentState;
+                return;
+              }
+              break;
+            case 'W':
+              currentState = SETTINGS_MENU;
+              enterMenu(&settingsMenu);
+              prevState = currentState;
+              return;
+          }
+          if (ethMenu.length > lcdRows) {
+            if (eth_selectedIndex < eth_menuScroll) eth_menuScroll = eth_selectedIndex;
+            if (eth_selectedIndex >= eth_menuScroll + lcdRows) eth_menuScroll = eth_selectedIndex - lcdRows + 1;
+            int maxScroll = ethMenu.length - lcdRows;
+            if (eth_menuScroll > maxScroll) eth_menuScroll = maxScroll;
+            if (eth_menuScroll < 0) eth_menuScroll = 0;
+          } else {
+            eth_menuScroll = 0;
+          }
+        } else {
+          // Редактирование октета
+          switch (key) {
+            case 'U':
+              switch (eth_selectedIndex) {
+                case 0:
+                  eth_ip[eth_editOctet] = (eth_ip[eth_editOctet] < 255) ? eth_ip[eth_editOctet] + 1 : 0;
+                  break;
+                case 1:
+                  eth_mask[eth_editOctet] = (eth_mask[eth_editOctet] < 255) ? eth_mask[eth_editOctet] + 1 : 0;
+                  break;
+                case 2:
+                  eth_gw[eth_editOctet] = (eth_gw[eth_editOctet] < 255) ? eth_gw[eth_editOctet] + 1 : 0;
+                  break;
+                case 3:
+                  eth_dns[eth_editOctet] = (eth_dns[eth_editOctet] < 255) ? eth_dns[eth_editOctet] + 1 : 0;
+                  break;
+              }
+              break;
+            case 'D':
+              switch (eth_selectedIndex) {
+                case 0:
+                  eth_ip[eth_editOctet] = (eth_ip[eth_editOctet] > 0) ? eth_ip[eth_editOctet] - 1 : 255;
+                  break;
+                case 1:
+                  eth_mask[eth_editOctet] = (eth_mask[eth_editOctet] > 0) ? eth_mask[eth_editOctet] - 1 : 255;
+                  break;
+                case 2:
+                  eth_gw[eth_editOctet] = (eth_gw[eth_editOctet] > 0) ? eth_gw[eth_editOctet] - 1 : 255;
+                  break;
+                case 3:
+                  eth_dns[eth_editOctet] = (eth_dns[eth_editOctet] > 0) ? eth_dns[eth_editOctet] - 1 : 255;
+                  break;
+              }
+              break;
+            case 'E':
+              if (eth_editOctet < 3) {
+                eth_editOctet++;
+              } else {
+                eth_isEditing = false;
+                eth_editOctet = 0;
+              }
+              break;
+            case 'W':
+              eth_isEditing = false;
+              eth_editOctet = 0;
+              break;
+          }
+        }
+        showEthMenu();
+      }
+      break;
+    case UART_MENU:
+      if (prevState != UART_MENU) showUARTMenu();
+      if (key) {
+        if (!uart_isEditing) {
+          // Навигация по пунктам
+          switch (key) {
+            case 'U':
+              uart_selectedIndex = (uart_selectedIndex > 0) ? uart_selectedIndex - 1 : uartMenu.length - 1;
+              break;
+            case 'D':
+              uart_selectedIndex = (uart_selectedIndex < uartMenu.length - 1) ? uart_selectedIndex + 1 : 0;
+              break;
+            case 'E':
+              if (uart_selectedIndex < 4) {
+                uart_isEditing = true;
+                // Установить editIndex по текущему значению
+                switch (uart_selectedIndex) {
+                  case 0:
+                    for (uint8_t i = 0; i < baudRatesCount; i++) if (baudRates[i] == uart_baud) uart_editIndex = i;
+                    break;
+                  case 1:
+                    for (uint8_t i = 0; i < dataBitsCount; i++) if (dataBitsList[i] == uart_dataBits) uart_editIndex = i;
+                    break;
+                  case 2:
+                    uart_editIndex = uart_parity;
+                    break;
+                  case 3:
+                    for (uint8_t i = 0; i < stopBitsCount; i++) if (stopBitsList[i] == uart_stopBits) uart_editIndex = i;
+                    break;
+                }
+              } else if (uart_selectedIndex == 4) {
+                // Применить
+                saveUARTToRegisters();
+                currentState = SETTINGS_MENU;
+                enterMenu(&settingsMenu);
+                prevState = currentState;
+                return;
+              }
+              break;
+            case 'W':
+              if (uart_isEditing) {
+                uart_isEditing = false; // Отмена редактирования
+              } else {
+                currentState = SETTINGS_MENU;
+                enterMenu(&settingsMenu);
+                prevState = currentState;
+                return;
+              }
+              break;
+          }
+          // Скроллинг
+          if (uartMenu.length > lcdRows) {
+            if (uart_selectedIndex < uart_menuScroll) uart_menuScroll = uart_selectedIndex;
+            if (uart_selectedIndex >= uart_menuScroll + lcdRows) uart_menuScroll = uart_selectedIndex - lcdRows + 1;
+            int maxScroll = uartMenu.length - lcdRows;
+            if (uart_menuScroll > maxScroll) uart_menuScroll = maxScroll;
+            if (uart_menuScroll < 0) uart_menuScroll = 0;
+          } else {
+            uart_menuScroll = 0;
+          }
+        } else {
+          // Режим редактирования значения
+          switch (key) {
+            case 'U':
+              switch (uart_selectedIndex) {
+                case 0:
+                  uart_editIndex = (uart_editIndex > 0) ? uart_editIndex - 1 : baudRatesCount - 1;
+                  break;
+                case 1:
+                  uart_editIndex = (uart_editIndex > 0) ? uart_editIndex - 1 : dataBitsCount - 1;
+                  break;
+                case 2:
+                  uart_editIndex = (uart_editIndex > 0) ? uart_editIndex - 1 : parityCount - 1;
+                  break;
+                case 3:
+                  uart_editIndex = (uart_editIndex > 0) ? uart_editIndex - 1 : stopBitsCount - 1;
+                  break;
+              }
+              break;
+            case 'D':
+              switch (uart_selectedIndex) {
+                case 0:
+                  uart_editIndex = (uart_editIndex < baudRatesCount - 1) ? uart_editIndex + 1 : 0;
+                  break;
+                case 1:
+                  uart_editIndex = (uart_editIndex < dataBitsCount - 1) ? uart_editIndex + 1 : 0;
+                  break;
+                case 2:
+                  uart_editIndex = (uart_editIndex < parityCount - 1) ? uart_editIndex + 1 : 0;
+                  break;
+                case 3:
+                  uart_editIndex = (uart_editIndex < stopBitsCount - 1) ? uart_editIndex + 1 : 0;
+                  break;
+              }
+              break;
+            case 'E':
+              // Сохраняем выбранное значение
+              switch (uart_selectedIndex) {
+                case 0:
+                  uart_baud = baudRates[uart_editIndex];
+                  break;
+                case 1:
+                  uart_dataBits = dataBitsList[uart_editIndex];
+                  break;
+                case 2:
+                  uart_parity = uart_editIndex;
+                  break;
+                case 3:
+                  uart_stopBits = stopBitsList[uart_editIndex];
+                  break;
+              }
+              uart_isEditing = false;
+              break;
+            case 'W':
+              uart_isEditing = false; // Отмена редактирования
+              break;
+          }
+        }
+        showUARTMenu();
+
+      }
+      break;
+    }
+  prevState = currentState;
+  prevSelected = selectedIndex;
+  prevScroll = menuScroll;
+}
