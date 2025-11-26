@@ -125,8 +125,8 @@ void loop() {
   if (gState.currentState != prevState) needRedraw = true;
 
   if (key) {
+    tmr3_local.start();
     if (!lcdIsOn) {
-      tmr3_local.start();
       lcdIsOn = true;
       lcd.setDisplay(true, false, false);
     }
